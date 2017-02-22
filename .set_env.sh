@@ -2,7 +2,6 @@
 #######################################################################################################
 #  NAME               : .set_env
 #  Summary            : 
-#  Created by         : jpsaraiva
 #  Usage              : .set_env..............    # Displays the menu
 #                     : .set_env [DB_NAME]......  # Loads environment variable for specific database
 #--------------------------------------------------------------------------
