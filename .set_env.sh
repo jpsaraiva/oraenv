@@ -30,13 +30,14 @@
 #  3.3.1 |20161214 | J.SARAIVA | Unset NLS_LANG when changing to ASM instance added
 #                              | Variable from get_db_information are now empty if there is an error, preventing problems on standby database
 #  3.3.2 |20170123 | J.SARAIVA | Added exclusion of blank lines in oratab
-#  3.3.3 |20170123 | J.SARAIVA | Removed ASM filter in oratab to prevent problems with single instance and 12c env -- may not be compatible with current oratab config!!!!!
+#  3.3.3 |20170303 | J.SARAIVA | Removed ASM filter in oratab to prevent problems with single instance and 12c env -- may not be compatible with current oratab config!!!!!
+#  3.3.4 |20170303 | M.ALMEIDA | Modified agent load environment settings
 ######################################################################################################
 SOURCE="${BASH_SOURCE[0]}" #JPS# the script is sourced so this have to be used instead of $0 below
 PROGNAME=`basename ${SOURCE}` 
 BASEDIR="$( dirname "$SOURCE" )"
 REVISION="3.3"
-LASTUPDATE="2016-11-22"
+LASTUPDATE="2017-03-03"
 
 export OSID=ORACLE_SID
 export OBASE=ORACLE_BASE
@@ -148,15 +149,15 @@ print_banner() {
 
 set_sp() {
  if [[ ${!OSID} == *"+ASM"* ]]; then
-	${!OHOME}/bin/sqlplus / as sysasm
+    ${!OHOME}/bin/sqlplus / as sysasm
  else
-	${!OHOME}/bin/sqlplus / as sysdba
+    ${!OHOME}/bin/sqlplus / as sysdba
  fi
 }
 
 set_alias() {
  # DB
- alias 		   sp=set_sp # sp will choose between sysasm or sysdba according to OSID
+ alias         sp=set_sp # sp will choose between sysasm or sysdba according to OSID
  alias      cdora='cd ${!OHOME}'
  alias        dbs='cd ${!OHOME}/dbs'
  alias        net='cd ${!OHOME}/network/admin'
@@ -202,7 +203,11 @@ set_env() {
  export ORACLE_SID=${_MY_SID}
  . oraenv > /dev/null # hide message "The Oracle base for ORACLE_HOME=XXX is YYYY"
  unset ORAENV_ASK # to allow to use . oraenv directly
+ unset AGENT_HOME
+ unset EMSTATE
+ unset GRID_HOME
  export TNS_ADMIN=$ORACLE_HOME/network/admin
+ [[ ${_MY_SID} == *"+ASM"* ]] && export GRID_HOME=$ORACLE_HOME
  # export NLS_LANG; format: NLS_LANG=LANGUAGE_TERRITORY.CHARACTERSET
  get_db_information ${_MY_SID}
  set_nls_lang
@@ -213,6 +218,10 @@ set_agent_env() {
  export ORACLE_SID=EMAGENT
  export ORACLE_HOME=`ps -ef | grep -i "emwd.pl agent" | grep -v grep | awk '{print $9}' | head -1 | sed -s 's/\/bin\/emwd.pl//'` # Only one agent per host is supported
  export PATH=$ORACLE_HOME/bin:$PATH
+ export AGENT_HOME=$ORACLE_HOME
+ export EMSTATE=`ps -ef | grep -i "emagent.nohup" | grep -v grep | awk '{print $11}' | sed -s 's/agent_inst\/.*/agent_inst/' `
+ export OMS_HOME=`ps -ef | grep -v grep| egrep --color 'EMGC_ADMINSERVER|EMGC_OMS.'|sed -nr 's/.*-DORACLE_HOME=([^ ]+).*/\1/p'`
+ export GRID_HOME=$OMS_HOME
 }
 
 get_db_information(){
@@ -223,6 +232,7 @@ get_db_information(){
 	fi
 	_DB_INFO=`sqlplus -S -L / as sysdba <<EOF
 	set echo off ver off feedb off head off pages 0	
+	WHENEVER SQLERROR CONTINUE NONE;
 	select '_NLS_LANG='||a.value||'_'||b.value||'.'||c.value as nls_lang from nls_database_parameters a, nls_database_parameters b, nls_database_parameters c where 1=1 and a.parameter = 'NLS_LANGUAGE' and b.parameter = 'NLS_TERRITORY' and c.parameter = 'NLS_CHARACTERSET';
 	select '_DIAGNOSTIC_DEST='||p.value diagnostic_dest from v\\$parameter p where p.name='diagnostic_dest';
 	exit;
