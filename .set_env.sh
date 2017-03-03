@@ -28,7 +28,7 @@
 #                              |  functions set_nls_lang and set_diag_dest will read information saved in get_db_information
 #                              | replaced ' with " on AGENT alias
 #  3.3.1 |20161214 | J.SARAIVA | Unset NLS_LANG when changing to ASM instance added
-#							   | Variable from get_db_information are now empty if there is an error, preventing problems on standby database
+#                              | Variable from get_db_information are now empty if there is an error, preventing problems on standby database
 #  3.3.2 |20170123 | J.SARAIVA | Added exclusion of blank lines in oratab
 ######################################################################################################
 SOURCE="${BASH_SOURCE[0]}" #JPS# the script is sourced so this have to be used instead of $0 below
