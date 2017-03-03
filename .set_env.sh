@@ -30,6 +30,7 @@
 #  3.3.1 |20161214 | J.SARAIVA | Unset NLS_LANG when changing to ASM instance added
 #                              | Variable from get_db_information are now empty if there is an error, preventing problems on standby database
 #  3.3.2 |20170123 | J.SARAIVA | Added exclusion of blank lines in oratab
+#  3.3.3 |20170123 | J.SARAIVA | Removed ASM filter in oratab to prevent problems with single instance and 12c env -- may not be compatible with current oratab config!!!!!
 ######################################################################################################
 SOURCE="${BASH_SOURCE[0]}" #JPS# the script is sourced so this have to be used instead of $0 below
 PROGNAME=`basename ${SOURCE}` 
@@ -124,9 +125,9 @@ print_banner() {
            export ORALINE=${ORALINE}:${_ORA_SID} #save a list of SID for future validations
            ;;
     esac
- done < <(cat $ORATAB | grep -v "^#" | | grep -v -e '^$' | grep -v "^[^+].*\# line added by Agent" | grep "`grep -oP "\+ASM\K(\d)(?=.*)" $ORATAB | head -1`:\/" | awk '/./' | awk -F":" '{print $1 " "$2}' | sort -u )
- # it will only print instances with the same instance number as the ASM instance on the oratab
- # head -1 above will prevent double entries of +ASM to mess with the list
+ done < <(cat $ORATAB | grep -v "^#" | grep -v -e '^$' | grep -v "^[^+].*\# line added by Agent" | awk '/./' | awk -F":" '{print $1 " "$2}' | sort -u )
+ # REMOVED: it will only print instances with the same instance number as the ASM instance on the oratab
+ # REMOVED: head -1 above will prevent double entries of +ASM to mess with the list
  # "# line added by Agent" added to prevent db_name that end with a number to be consfused with instance_name, excluding the ASM instance (starts with +)
  # remove blank lines
  fi
