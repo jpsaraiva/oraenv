@@ -32,6 +32,7 @@
 #  3.3.2 |20170123 | J.SARAIVA | Added exclusion of blank lines in oratab
 #  3.3.3 |20170303 | J.SARAIVA | Removed ASM filter in oratab to prevent problems with single instance and 12c env -- may not be compatible with current oratab config!!!!!
 #  3.3.4 |20170303 | M.ALMEIDA | Modified agent load environment settings
+#  3.3.5 |20170303 | J.SARAIVA | Added spc alias to execute sql file
 ######################################################################################################
 SOURCE="${BASH_SOURCE[0]}" #JPS# the script is sourced so this have to be used instead of $0 below
 PROGNAME=`basename ${SOURCE}` 
@@ -158,6 +159,7 @@ set_sp() {
 set_alias() {
  # DB
  alias         sp=set_sp # sp will choose between sysasm or sysdba according to OSID
+ alias spc='sqlplus -L -S / as sysdba @$1'
  alias      cdora='cd ${!OHOME}'
  alias        dbs='cd ${!OHOME}/dbs'
  alias        net='cd ${!OHOME}/network/admin'
