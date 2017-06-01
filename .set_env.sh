@@ -33,6 +33,9 @@
 #  3.3.3 |20170303 | J.SARAIVA | Removed ASM filter in oratab to prevent problems with single instance and 12c env -- may not be compatible with current oratab config!!!!!
 #  3.3.4 |20170303 | M.ALMEIDA | Modified agent load environment settings
 #  3.3.5 |20170303 | J.SARAIVA | Added spc alias to execute sql file
+#  3.3.6 |20170601 | J.SARAIVA | Database ownership is now validated against $ORACLE_HOME/bin/oracle ownership if database is down
+#                              | Alias are only set for database if it is owned by the current user, or -u or -a is used
+#                              | Proper alias are now set when ASM is used
 ######################################################################################################
 SOURCE="${BASH_SOURCE[0]}" #JPS# the script is sourced so this have to be used instead of $0 below
 PROGNAME=`basename ${SOURCE}` 
@@ -112,9 +115,10 @@ print_banner() {
            _ORA_SID_PROC_OWNER=`grep "[p]mon_${_ORA_SID}$" <<< "$RUNNING" | awk '{print $1}'`  # from running
            #check status
            if [[ ${RUNNING} == *"_${_ORA_SID}"* ]]; then
-               _ORA_STATUS="RUNNING"
+             _ORA_STATUS="RUNNING"
            else
              _ORA_STATUS="NOT RUNNING"
+			 _ORA_SID_PROC_OWNER=`stat -c '%U' ${_ORA_HOME}/bin/oracle` #this will get the owner of oracle binary and set it as database owner
            fi
            #validate ownership
            if [[ ! -z ${_NOUSERVALIDATE} ]] || [[ $_ORA_SID_PROC_OWNER == $_USER ]] || [[ -z ${_ORA_SID_PROC_OWNER} ]]; then 
@@ -122,8 +126,8 @@ print_banner() {
              # OR the current user (might be an impersonation with --user) is the owner of the instance
              # OR the database is down (no owner is determined)      
              printf "# %9s : %-40s : %s \n" "${_ORA_SID}" "${_ORA_HOME}" "${_ORA_STATUS}" #the %<n>s correnpondent to ORACLE_HOME may vary
+			 alias ${_ORA_SID}=". ${BASEDIR}/${PROGNAME} ${_ORA_SID}" #define alias for DB
            fi
-           alias ${_ORA_SID}=". ${BASEDIR}/${PROGNAME} ${_ORA_SID}" #define alias for DB
            export ORALINE=${ORALINE}:${_ORA_SID} #save a list of SID for future validations
            ;;
     esac
@@ -164,11 +168,11 @@ set_alias() {
  alias        dbs='cd ${!OHOME}/dbs'
  alias        net='cd ${!OHOME}/network/admin'
  alias        adm='cd ${!ODIAG}/diag'
- alias      bdump='cd ${!ODIAG}/diag/rdbms/`echo ${!OSID%[0-9]} |tr '[:upper:]' '[:lower:]'`/${!OSID}/trace'
- alias      cdump='cd ${!ODIAG}/diag/rdbms/`echo ${!OSID%[0-9]} |tr '[:upper:]' '[:lower:]'`/${!OSID}/cdump'
- alias      udump='cd ${!ODIAG}/diag/rdbms/`echo ${!OSID%[0-9]} |tr '[:upper:]' '[:lower:]'`/${!OSID}/trace'
- alias      alert='vi ${!ODIAG}/diag/rdbms/`echo ${!OSID%[0-9]} |tr '[:upper:]' '[:lower:]'`/${!OSID}/trace/alert_${!OSID}.log'
- alias tail_alert='tail -50f ${!ODIAG}/diag/rdbms/`echo ${!OSID%[0-9]} |tr '[:upper:]' '[:lower:]'`/${!OSID}/trace/alert_${!OSID}.log'
+ alias      bdump='cd ${!ODIAG}/diag/`[[ ${!OSID} == *"+ASM"* ]] && echo "asm" || echo "rdbms"`/`echo ${!OSID%[0-9]} |tr '[:upper:]' '[:lower:]'`/${!OSID}/trace'
+ alias      cdump='cd ${!ODIAG}/diag/`[[ ${!OSID} == *"+ASM"* ]] && echo "asm" || echo "rdbms"`/`echo ${!OSID%[0-9]} |tr '[:upper:]' '[:lower:]'`/${!OSID}/cdump'
+ alias      udump='cd ${!ODIAG}/diag/`[[ ${!OSID} == *"+ASM"* ]] && echo "asm" || echo "rdbms"`/`echo ${!OSID%[0-9]} |tr '[:upper:]' '[:lower:]'`/${!OSID}/trace'
+ alias      alert='vi ${!ODIAG}/diag/`[[ ${!OSID} == *"+ASM"* ]] && echo "asm" || echo "rdbms"`/`echo ${!OSID%[0-9]} |tr '[:upper:]' '[:lower:]'`/${!OSID}/trace/alert_${!OSID}.log'
+ alias tail_alert='tail -50f ${!ODIAG}/diag/`[[ ${!OSID} == *"+ASM"* ]] && echo "asm" || echo "rdbms"`/`echo ${!OSID%[0-9]} |tr '[:upper:]' '[:lower:]'`/${!OSID}/trace/alert_${!OSID}.log'
  # SO
  alias   ll="ls -l"     #Simple ll
  alias   pp="ps -ef | grep [p]mon_ | sort -k8"
