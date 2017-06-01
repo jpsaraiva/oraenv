@@ -41,7 +41,7 @@ SOURCE="${BASH_SOURCE[0]}" #JPS# the script is sourced so this have to be used i
 PROGNAME=`basename ${SOURCE}` 
 BASEDIR="$( dirname "$SOURCE" )"
 REVISION="3.3"
-LASTUPDATE="2017-03-03"
+LASTUPDATE="2017-06-01"
 
 export OSID=ORACLE_SID
 export OBASE=ORACLE_BASE
