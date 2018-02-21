@@ -1,4 +1,4 @@
-#!/bin/bash 
+#!/bin/ksh
 #######################################################################################################
 #  NAME               : .set_env
 #  Summary            : 
@@ -10,48 +10,17 @@
 # Revision History
 #
 #Revision|Date_____|By_________|_Object______________________________________
-#  1.0   |         |           | Creation
-#  2.0   |         | M.ALMEIDA | 
-#  3.1   |20161020 | J.SARAIVA | Complete overhaul (only for Linux):
-#                              |  Banner no longer lags, just one ps is done for all databases
-#                              |  Banner text reformated
-#                              |  .profile files no longer necessary, alias are created dinamically
-#                              |  Several parameters introduced to enable using the script as any user
-#                              |  Alias available either with script usage or through oraenv
-#                              |  EM Agent environment variables load automaticaly (only 1)
-#                              |  export NLS_LANG is not implemented due to being database specific (no longer true, check 3.2)
-#  3.2   |20161114 | J.SARAIVA | Filter added to ORATAB to exclude # line added by Agent
-#                              | Added fucntion to load NLS_LANG by connecting to the database itself, ASM exception
-#  3.2.1 |20161115 | J.SARAIVA | Alias sp will choose between sysasm or sysdba according to OSID
-#  3.2.2 |20161121 | N.ALVES   | Replaced sqlplus -SL with sqlplus -S -L due to problems connections to databases 12c
-#  3.3   |20161122 | J.SARAIVA | get_db_information created to return general information from the database 
-#                              |  functions set_nls_lang and set_diag_dest will read information saved in get_db_information
-#                              | replaced ' with " on AGENT alias
-#  3.3.1 |20161214 | J.SARAIVA | Unset NLS_LANG when changing to ASM instance added
-#                              | Variable from get_db_information are now empty if there is an error, preventing problems on standby database
-#  3.3.2 |20170123 | J.SARAIVA | Added exclusion of blank lines in oratab
-#  3.3.3 |20170303 | J.SARAIVA | Removed ASM filter in oratab to prevent problems with single instance and 12c env -- may not be compatible with current oratab config!!!!!
-#  3.3.4 |20170303 | M.ALMEIDA | Modified agent load environment settings
-#  3.3.5 |20170303 | J.SARAIVA | Added spc alias to execute sql file
-#  3.3.6 |20170601 | J.SARAIVA | Database ownership is now validated against $ORACLE_HOME/bin/oracle ownership if database is down
-#                              | Alias are only set for database if it is owned by the current user, or -u or -a is used
-#                              | Proper alias are now set when ASM is used
+#  1.0   |20180220 | J.SARAIVA | Modified original .set_env to work with KSH on AIX
+#                              | works with ksh, ksh93 features would be awesome but not available
 ######################################################################################################
-SOURCE="${BASH_SOURCE[0]}" #JPS# the script is sourced so this have to be used instead of $0 below
-PROGNAME=`basename ${SOURCE}` 
-BASEDIR="$( dirname "$SOURCE" )"
-REVISION="3.3"
-LASTUPDATE="2017-06-01"
-
-# Indirection Parameters
-export OSID=ORACLE_SID
-export OBASE=ORACLE_BASE
-export OHOME=ORACLE_HOME
-export ODIAG=DIAG_DEST
-export GHOME=GRID_HOME
+PROGNAME=real.sh # set manually because sourced and AIX...
+BASEDIR=$( cd -P -- "$(dirname -- "$(command -v -- "$0")")" && pwd -P )
+REVISION="1.0"
+LASTUPDATE="2018-02-20"
+IFS=
 
 #Custom PATHs
-export SQLPATH=/products/backup/oracle/dba/sql
+export SQLPATH=
 ###
 
 print_revision() {
@@ -83,6 +52,11 @@ print_banner() {
  else
   _USER=`whoami`
  fi
+ 
+ if [[ ${_NOUSERVALIDATE} -eq 1 ]]; then
+   _USER="all"
+ fi
+ 
  #__________________________
  ## BANNER
  ## present DBs in /etc/oratab and define alias for each one under logged user
@@ -92,6 +66,11 @@ print_banner() {
  echo "# Defined instances on the machine with the user -> ${_USER}          "
  echo "######################################################################"
  echo "#"
+ 
+ #get running databases
+ IFS=
+ RUNNING=`ps -ef | sed 's/ *$//' | grep [p]mon | awk '{print $1 " " $9 }'`
+ 
  ## Find and define ORATAB with its location
  if [[ -f /etc/oratab ]]; then
   export ORATAB=/etc/oratab
@@ -100,43 +79,59 @@ print_banner() {
  fi
  
  if [[ ! -z "$ORATAB" ]]; then
- 
  export ORALINE="" #global var
- 
- RUNNING=`ps -ef | sed 's/ *$//' | grep [p]mon | awk '{print $1 " " $8 }'`
- #TABLINE=`cat /etc/oratab | grep -v "^#" | grep "\`grep -oP "\+ASM\K(\d)(?=.*)" $ORATAB\`:\/" | awk '/./' | awk -F":" '{print $1":"$2}' | sort -u`
-  
- while read LINE
+ IFS='
+'     
+ ORATAB=`cat $ORATAB | egrep -v "^#|^\*" | grep -v -e '^$' | grep -v "^[^+].*\# line added by Agent" | awk '/./' | awk -F":" '{print $1 " "$2}' | sort -u`
+ for LINE in $ORATAB 
  do
-    case $LINE in
-         \#*) ;;        #ignores comment-line in oratab
-         *)
-           _ORA_SID=`echo $LINE | awk '{print $1}' -`  #extract ORACLE_SID
-           _ORA_HOME=`echo $LINE | awk '{print $2}' -`  #extract ORACLE_HOME
-           _ORA_SID_PROC_OWNER=`grep "[p]mon_${_ORA_SID}$" <<< "$RUNNING" | awk '{print $1}'`  # from running
-           #check status
-           if [[ ${RUNNING} == *"_${_ORA_SID}"* ]]; then
-             _ORA_STATUS="RUNNING"
-           else
-             _ORA_STATUS="NOT RUNNING"
-			 _ORA_SID_PROC_OWNER=`stat -c '%U' ${_ORA_HOME}/bin/oracle` #this will get the owner of oracle binary and set it as database owner
-           fi
-           #validate ownership
-           if [[ ! -z ${_NOUSERVALIDATE} ]] || [[ $_ORA_SID_PROC_OWNER == $_USER ]] || [[ -z ${_ORA_SID_PROC_OWNER} ]]; then 
-             # if --all parameter have been user
-             # OR the current user (might be an impersonation with --user) is the owner of the instance
-             # OR the database is down (no owner is determined)      
-             printf "# %9s : %-40s : %s \n" "${_ORA_SID}" "${_ORA_HOME}" "${_ORA_STATUS}" #the %<n>s correnpondent to ORACLE_HOME may vary
-			 alias ${_ORA_SID}=". ${BASEDIR}/${PROGNAME} ${_ORA_SID}" #define alias for DB
-           fi
-           export ORALINE=${ORALINE}:${_ORA_SID} #save a list of SID for future validations
-           ;;
-    esac
- done < <(cat $ORATAB | grep -v "^#" | grep -v -e '^$' | grep -v "^[^+].*\# line added by Agent" | awk '/./' | awk -F":" '{print $1 " "$2}' | sort -u )
- # REMOVED: it will only print instances with the same instance number as the ASM instance on the oratab
- # REMOVED: head -1 above will prevent double entries of +ASM to mess with the list
- # "# line added by Agent" added to prevent db_name that end with a number to be consfused with instance_name, excluding the ASM instance (starts with +)
- # remove blank lines
+   _ORA_SID=`echo $LINE | awk '{print $1}' -`  #extract ORACLE_SID
+   _ORA_HOME=`echo $LINE | awk '{print $2}' -`  #extract ORACLE_HOME 
+   _ORA_SID_PROC_OWNER=`echo "$RUNNING" | grep "[p]mon_${_ORA_SID}$" | awk '{print $1}'`  # from running
+   #check status
+   if [[ ${RUNNING} == *"_${_ORA_SID}"* ]]; then
+     _ORA_STATUS="RUNNING"
+   else
+     _ORA_STATUS="NOT RUNNING"
+     _ORA_SID_PROC_OWNER=`ls -l ${_ORA_HOME}/bin/oracle | awk '{print $3}'` #this will get the owner of oracle binary and set it as database owner
+   fi
+   RUNNING=`echo "$RUNNING" | grep -v "[p]mon_${_ORA_SID}$"`
+   #validate ownership
+   if [[ ! -z ${_NOUSERVALIDATE} ]] || [[ $_ORA_SID_PROC_OWNER == $_USER ]] || [[ -z ${_ORA_SID_PROC_OWNER} ]]; then 
+     # if --all parameter have been user
+     # OR the current user (might be an impersonation with --user) is the owner of the instance
+     # OR the database is down (no owner is determined)      
+     if [[ $_ORA_SID_PROC_OWNER == $_USER ]]; then
+       printf "# %9s : %-40s : %s \n" "${_ORA_SID}" "${_ORA_HOME}" "${_ORA_STATUS}" #the %<n>s correnpondent to ORACLE_HOME may vary
+     else
+       printf "# %9s : %-40s : %s @ %s \n" "${_ORA_SID}" "${_ORA_HOME}" "${_ORA_STATUS}" "$_ORA_SID_PROC_OWNER" #the %<n>s correnpondent to ORACLE_HOME may vary
+     fi
+     alias ${_ORA_SID}=". ${BASEDIR}/${PROGNAME} ${_ORA_SID}" #define alias for DB
+   fi
+   export ORALINE=${ORALINE}:${_ORA_SID} #save a list of SID for future validations
+ done
+
+# Databases running not in ORATAB
+if [[ ! -z $RUNNING && ${_NOUSERVALIDATE} -eq 1 ]] || [[ ${RUNNING} == *"${_USER}"* ]];
+then
+echo "#"
+echo "# Databases running not configured in ORATAB:"
+for line in $RUNNING
+do
+  _ORA_SID=`echo $line | awk '{print $2}' - | sed 's/ora_pmon_//g'`  #extract ORACLE_SID
+  _ORA_HOME="not determinated"  #extract ORACLE_HOME 
+  _ORA_SID_PROC_OWNER=`echo "$RUNNING" | grep "[p]mon_${_ORA_SID}$" | awk '{print $1}'`  # from running
+  if [[ ! -z ${_NOUSERVALIDATE} ]] || [[ $_ORA_SID_PROC_OWNER == $_USER ]] || [[ -z ${_ORA_SID_PROC_OWNER} ]]; then     
+    if [[ $_ORA_SID_PROC_OWNER == $_USER ]]; then
+      printf "# %9s : %-40s : %s \n" "${_ORA_SID}" "${_ORA_HOME}" "${_ORA_STATUS}" #the %<n>s correnpondent to ORACLE_HOME may vary
+    else
+      printf "# %9s : %-40s : %s @ %s \n" "${_ORA_SID}" "${_ORA_HOME}" "${_ORA_STATUS}" "$_ORA_SID_PROC_OWNER" #the %<n>s correnpondent to ORACLE_HOME may vary
+    fi
+    alias ${_ORA_SID}=". ${BASEDIR}/${PROGNAME} ${_ORA_SID}" #define alias for DB
+  fi
+done
+fi
+
  fi
  
  if [[ `ps -ef | grep [e]magent | wc -l| bc` -ge 1 ]] ; then
@@ -154,26 +149,33 @@ print_banner() {
 }
 
 set_sp() {
- if [[ ${!OSID} == *"+ASM"* ]]; then
-    ${!OHOME}/bin/sqlplus / as sysasm
+ if [[ ${OSID} == *"+ASM"* ]]; then
+    ${OHOME}/bin/sqlplus / as sysasm
  else
-    ${!OHOME}/bin/sqlplus / as sysdba
+    ${OHOME}/bin/sqlplus / as sysdba
  fi
 }
 
 set_alias() {
+ export OSID=$ORACLE_SID
+ export OBASE=$ORACLE_BASE
+ export OHOME=$ORACLE_HOME
+ export ODIAG=$DIAG_DEST
+ export GHOME=$GRID_HOME
  # DB
  alias         sp=set_sp # sp will choose between sysasm or sysdba according to OSID
  alias spc='sqlplus -L -S / as sysdba @$1'
- alias      cdora='cd ${!OHOME}'
- alias        dbs='cd ${!OHOME}/dbs'
- alias        net='cd ${!OHOME}/network/admin'
- alias        adm='cd ${!ODIAG}/diag'
- alias      bdump='cd ${!ODIAG}/diag/`[[ ${!OSID} == *"+ASM"* ]] && echo "asm" || echo "rdbms"`/`echo ${!OSID%[0-9]} |tr '[:upper:]' '[:lower:]'`/${!OSID}/trace'
- alias      cdump='cd ${!ODIAG}/diag/`[[ ${!OSID} == *"+ASM"* ]] && echo "asm" || echo "rdbms"`/`echo ${!OSID%[0-9]} |tr '[:upper:]' '[:lower:]'`/${!OSID}/cdump'
- alias      udump='cd ${!ODIAG}/diag/`[[ ${!OSID} == *"+ASM"* ]] && echo "asm" || echo "rdbms"`/`echo ${!OSID%[0-9]} |tr '[:upper:]' '[:lower:]'`/${!OSID}/trace'
- alias      alert='vi ${!ODIAG}/diag/`[[ ${!OSID} == *"+ASM"* ]] && echo "asm" || echo "rdbms"`/`echo ${!OSID%[0-9]} |tr '[:upper:]' '[:lower:]'`/${!OSID}/trace/alert_${!OSID}.log'
- alias tail_alert='tail -50f ${!ODIAG}/diag/`[[ ${!OSID} == *"+ASM"* ]] && echo "asm" || echo "rdbms"`/`echo ${!OSID%[0-9]} |tr '[:upper:]' '[:lower:]'`/${!OSID}/trace/alert_${!OSID}.log'
+ alias      cdora='cd ${OHOME}'
+ alias        dbs='cd ${OHOME}/dbs'
+ alias        net='cd ${OHOME}/network/admin'
+ alias        adm='cd ${ODIAG}/diag'
+ alias      bdump='cd ${ODIAG}/diag/`[[ ${OSID} == *"+ASM"* ]] && echo "asm" || echo "rdbms"`/`echo ${OSID%[0-3]} |tr '[:upper:]' '[:lower:]'`/${OSID}/trace'
+ alias      cdump='cd ${ODIAG}/diag/`[[ ${OSID} == *"+ASM"* ]] && echo "asm" || echo "rdbms"`/`echo ${OSID%[0-3]} |tr '[:upper:]' '[:lower:]'`/${OSID}/cdump'
+ alias      udump='cd ${ODIAG}/diag/`[[ ${OSID} == *"+ASM"* ]] && echo "asm" || echo "rdbms"`/`echo ${OSID%[0-3]} |tr '[:upper:]' '[:lower:]'`/${OSID}/trace'
+ alias      alert='vi ${ODIAG}/diag/`[[ ${OSID} == *"+ASM"* ]] && echo "asm" || echo "rdbms"`/`echo ${OSID%[0-3]} |tr '[:upper:]' '[:lower:]'`/${OSID}/trace/alert_${OSID}.log'
+ alias tail_alert='tail -50f ${ODIAG}/diag/`[[ ${OSID} == *"+ASM"* ]] && echo "asm" || echo "rdbms"`/`echo ${OSID%[0-3]} |tr '[:upper:]' '[:lower:]'`/${OSID}/trace/alert_${OSID}.log'
+ # OSID%[0-3] in tr is a fix to avoid since instances terminated in a number like ORA7 to be transformed to ora instead of ora7, better validation should be made 
+  
  # SO
  alias   ll="ls -l"     #Simple ll
  alias   pp="ps -ef | grep [p]mon_ | sort -k8"
@@ -219,6 +221,7 @@ set_env() {
  get_db_information ${_MY_SID}
  set_nls_lang
  set_diag_dest
+ set_alias # moved to here on AIX due to missing parameter indirection on ksh
 }
 
 set_agent_env() { 
@@ -267,9 +270,9 @@ set_diag_dest(){
 	fi
 }
 
+
 init_set_env() {
  print_banner
- set_alias # this will work either if you call this script with ORACLE_SID or use . oraenv directly
  set_editor
 }
 
