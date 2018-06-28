@@ -36,12 +36,16 @@
 #  3.3.6 |20170601 | J.SARAIVA | Database ownership is now validated against $ORACLE_HOME/bin/oracle ownership if database is down
 #                              | Alias are only set for database if it is owned by the current user, or -u or -a is used
 #                              | Proper alias are now set when ASM is used
+#  3.3.7 |20180628 | JMONTEIRO | Changed agent home definition to support multiple homes
+#
+#  todo:
+#                              | Use /etc/oragchomelist to load agent definition
 ######################################################################################################
 SOURCE="${BASH_SOURCE[0]}" #JPS# the script is sourced so this have to be used instead of $0 below
 PROGNAME=`basename ${SOURCE}` 
 BASEDIR="$( dirname "$SOURCE" )"
 REVISION="3.3"
-LASTUPDATE="2017-06-01"
+LASTUPDATE="2018-06-28"
 
 # Indirection Parameters
 export OSID=ORACLE_SID
@@ -221,12 +225,13 @@ set_env() {
  set_diag_dest
 }
 
-set_agent_env() { 
+set_agent_env() {
  export ORACLE_SID=EMAGENT
- export ORACLE_HOME=`ps -ef | grep -i "emwd.pl agent" | grep -v grep | awk '{print $9}' | head -1 | sed -s 's/\/bin\/emwd.pl//'` # Only one agent per host is supported
+ #export ORACLE_HOME=`ps -ef | grep -i "emwd.pl agent" | grep -v grep | awk '{print $9}' | head -1 | sed -s 's/\/bin\/emwd.pl//'` # Only one agent per host is supported
+ export ORACLE_HOME=`ps -fu ${_USER} | grep -i "emwd.pl agent" | grep -v grep | awk '{print $9}' | head -1 | sed -s 's/\/bin\/emwd.pl//'` # Support Multi-Agent - only set for current user
  export PATH=$ORACLE_HOME/bin:$PATH
  export AGENT_HOME=$ORACLE_HOME
- export EMSTATE=`ps -ef | grep -i "emagent.nohup" | grep -v grep | awk '{print $11}' | sed -s 's/agent_inst\/.*/agent_inst/' `
+ export EMSTATE=`ps -ef | grep -i "emagent.nohup" | grep -v grep | awk '{print $11}' | sed -s 's/agent_inst\/.*/agent_inst/'` 
  export OMS_HOME=`ps -ef | grep -v grep| egrep --color 'EMGC_ADMINSERVER|EMGC_OMS.'|sed -nr 's/.*-DORACLE_HOME=([^ ]+).*/\1/p'`
  export GRID_HOME=$OMS_HOME
 }
